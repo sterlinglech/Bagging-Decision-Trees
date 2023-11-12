@@ -24,70 +24,67 @@ def bagged_trees(X_train, y_train, X_test, y_test, num_bags, digit1, digit2):
     # % Note: You may use sklearns 'DecisonTreeClassifier'
     # but **not** 'RandomForestClassifier' or any other bagging function
 
-    # Initialize variables
-    bagged_trees = []
-    oob_predictions = np.zeros((X_train.shape[0], num_bags))
-    oob_counts = np.zeros(X_train.shape[0])
+    print("\n")
+    print(f"BAGGED TREES for {digit1} vs {digit2}:")
 
-    # List of OOB errors for each number of bags
-    oob_errors = []
+    n_samples = X_train.shape[0]
+    trees = []
+    oob_predictions = np.zeros((n_samples, num_bags))
+    for i in range(num_bags):
+        # Bootstrap sampling
+        sample_indices = np.random.choice(n_samples, n_samples, replace=True)
+        oob_indices = np.setdiff1d(range(n_samples), sample_indices)
+        X_sample, y_sample = X_train[sample_indices], y_train[sample_indices]
 
-    # Bootstrap sampling and training decision trees
-    for b in range(num_bags):
-        bootstrap_indices = np.random.choice(range(X_train.shape[0]), size=X_train.shape[0], replace=True)
-        oob_indices = np.setdiff1d(range(X_train.shape[0]), bootstrap_indices)
+        # Train decision tree
+        tree = DecisionTreeClassifier(criterion='entropy')
+        tree.fit(X_sample, y_sample)
+        trees.append(tree)
 
-        #TODO: Remove Print the indices for debugging
-        print(f"Bag {b + 1}:")
-        print(f"Bootstrap indices (first 10): {bootstrap_indices[:10]}")
-        print(f"OOB indices (first 10): {oob_indices[:10]}")
+        # Out-of-bag prediction
+        oob_predictions[oob_indices, i] = tree.predict(X_train[oob_indices])
 
-        # Train decision tree on bootstrap sample
-        tree = DecisionTreeClassifier()
-        tree.fit(X_train[bootstrap_indices], y_train[bootstrap_indices])
-        bagged_trees.append(tree)
+    # Calculate out-of-bag error
+    oob_error = np.mean((np.max(oob_predictions, axis=1) != y_train) * 1.0)
 
-        # Out-of-bag predictions
-        oob_predictions[oob_indices, b] = tree.predict(X_train[oob_indices])
-        oob_counts[oob_indices] += 1
+    # Test error calculation
+    test_predictions = np.array([tree.predict(X_test) for tree in trees])
+    test_prediction = np.mean(test_predictions, axis=0)
+    test_error = np.mean(test_prediction != y_test)
 
-        #TODO: Remove Print the OOB predictions for debugging
-        print(f"OOB predictions (first 10) for bag {b + 1}: {oob_predictions[oob_indices[:10], b]}")
-        print(f"OOB counts (first 10): {oob_counts[oob_indices[:10]]}")
-
-        # Calculate cumulative out-of-bag error after each bag
-        if oob_counts[oob_indices].any():  # Avoid division by zero
-            oob_error = (y_train[oob_indices] != np.apply_along_axis(
-                lambda x: np.bincount(x.astype(int), minlength=2).argmax(), 1,
-                oob_predictions[oob_indices, :b + 1])) & (oob_counts[oob_indices] > 0)
-            current_oob_error = np.sum(oob_error) / np.sum(oob_counts[oob_indices] > 0)
-            oob_errors.append(current_oob_error)
-
-    plt.figure(figsize=(12, 6))
-    plt.plot(range(1, num_bags + 1), oob_errors, label='OOB Error Rate')
-    plt.xlabel('Number of Bags')
-    plt.ylabel('OOB Error Rate')
-    plt.title(f'OOB Error Rate for Bagging Decision Trees ({digit1} vs {digit2})')
-    plt.legend()
-    plt.show()
-
-    # Calculate final out-of-bag error
-    final_oob_error = (y_train != np.apply_along_axis(lambda x: np.bincount(x.astype(int), minlength=2).argmax(), 1,
-                                                      oob_predictions)) & (oob_counts > 0)
-    out_of_bag_error = np.sum(final_oob_error) / np.sum(oob_counts > 0)
-
-    #TODO: Print the final OOB error for debugging
-    print(f"Final OOB error: {out_of_bag_error}")
-
-    # Calculate test error
-    test_votes = np.array([tree.predict(X_test) for tree in bagged_trees])
-    test_predictions = np.apply_along_axis(lambda x: np.bincount(x.astype(int), minlength=2).argmax(), 0, test_votes)
-    test_error = np.mean(test_predictions != y_test)
+    # TODO: Print the final OOB error for debugging
+    print(f"Final OOB error: {oob_error}")
 
     #TODO: Remove Print the final test error for debugging
     print(f"Final test error: {test_error}")
 
-    return out_of_bag_error, test_error
+    return oob_error, test_error
+
+def single_decision_tree(X_train, y_train, X_test, y_test, digit1, digit2):
+    print("\n")
+    print(f"SINGLE DECISION TREE for {digit1} vs {digit2}:" )
+
+    # Create a decision tree classifier object with entropy (information gain) as the criterion
+    tree = DecisionTreeClassifier(criterion='entropy')
+
+    # Train the decision tree on the training data
+    tree.fit(X_train, y_train)
+
+    # Predict on training data and calculate training error
+    train_predictions = tree.predict(X_train)
+    train_error = np.mean(train_predictions != y_train)
+
+    # Predict on test data and calculate test error
+    test_predictions = tree.predict(X_test)
+    test_error = np.mean(test_predictions != y_test)
+
+    # TODO: Print the final training error for debugging
+    print(f"Final training error error: {train_error}")
+
+    # TODO: Remove Print the final test error for debugging
+    print(f"Final test error: {test_error}")
+
+    return train_error, test_error
 
 def split_data(first, second):
     # Step a1: Load the Data
@@ -106,9 +103,9 @@ def split_data(first, second):
     X_test_First_VS_Second = test_data_First_VS_Second[:, 1:]
     y_test_First_VS_Second = test_data_First_VS_Second[:, 0]
 
-    # Convert labels to binary (1 for digit First, 0 for digit Second)
-    y_train_First_VS_Second = (y_train_First_VS_Second == 1).astype(int)
-    y_test_First_VS_Second = (y_test_First_VS_Second == 1).astype(int)
+    # Convert labels to binary (1 for digit `first`, 0 for digit `second`)
+    y_train_First_VS_Second = (y_train_First_VS_Second == first).astype(int)
+    y_test_First_VS_Second = (y_test_First_VS_Second == first).astype(int)
 
     return X_train_First_VS_Second, y_train_First_VS_Second, X_test_First_VS_Second, y_test_First_VS_Second
 
@@ -124,9 +121,13 @@ def main():
     out_of_bag_error_1v3, test_error_1v3 = bagged_trees(X_train_1v3, y_train_1v3, X_test_1v3, y_test_1v3, num_bags, 1, 3)
 
     # Run bagged trees for 3 VS 5
-    # out_of_bag_error_3v5, test_error_3v5 = bagged_trees(X_train_3v5, y_train_3v5, X_test_3v5, y_test_3v5, num_bags, 3, 5)
+    out_of_bag_error_3v5, test_error_3v5 = bagged_trees(X_train_3v5, y_train_3v5, X_test_3v5, y_test_3v5, num_bags, 3, 5)
 
-    # train_error, test_error = single_decision_tree(X_train, y_train, X_test, y_test)
+    # Run single decision tree for 1 VS 3
+    train_error_1v3, test_error_1v3 = single_decision_tree(X_train_1v3, y_train_1v3, X_test_1v3, y_test_1v3, 1, 3)
+
+    # Run single decision tree for 3 VS 5
+    train_error_3v5, test_error_3v5 = single_decision_tree(X_train_3v5, y_train_3v5, X_test_3v5, y_test_3v5, 3, 5)
 
 
 if __name__ == "__main__":
